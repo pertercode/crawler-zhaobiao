@@ -8,7 +8,6 @@ import java.util.logging.Level;
 public class Main {
 
     public static void main(String[] args) {
-
         // 去掉烦人的日志
         LogFactory.getFactory().setAttribute("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.NoOpLog");
         java.util.logging.Logger.getLogger("com.gargoylesoftware").setLevel(java.util.logging.Level.OFF);

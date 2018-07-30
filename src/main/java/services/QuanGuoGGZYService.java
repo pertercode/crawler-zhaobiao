@@ -122,6 +122,25 @@ public class QuanGuoGGZYService {
 
 
     public void getTender() {
+        // 获得所有省
+        List<Area> areaList = getAllArea();
+
+        // 循环所有省
+        for (Area area : areaList) {
+//            webClient.waitForBackgroundJavaScript(2000);
+
+            getList(area);
+
+        }
+
+    }
+
+
+    /**
+     * 获得列表
+     */
+    private void getList(Area prov) {
+
 
         WebClient webClient = new WebClient(BrowserVersion.CHROME);
         webClient.getOptions().setJavaScriptEnabled(true);
@@ -133,123 +152,145 @@ public class QuanGuoGGZYService {
 
         final String url = "http://deal.ggzy.gov.cn/ds/deal/dealList.jsp";
 
+        // 待循环城市列表
+        List<Area> areas = new ArrayList<Area>();
 
-        List<Area> areaList = getAllArea();
+        if (prov.isZhiXia()) {
+            // 直辖市
+            areas.add(prov);
+        } else {
+            // 省
+            areas.addAll(prov.getChildAreas());
+        }
 
-        // 循环所有省
-        for (Area area : areaList) {
+        // 遍历所有城市
+        for (int i = 0; i < areas.size(); i++) {
+
+            Area area = areas.get(i);
+
+
+            System.out.println("省====>    " + prov.getId() + " | " + prov.getTitle());
+
+            if (prov.isZhiXia()) {
+                // 如果是直辖市 , 则直接读取
+                System.out.println("市====>    " + prov.getId() + " | " + prov.getTitle());
+            } else {
+                System.out.println("市====>    " + area.getId() + " | " + area.getTitle());
+
+            }
+
+            int maxPage = 0;
+            int currentPage = 1;
 
             try {
+                do {
 
-//            webClient.waitForBackgroundJavaScript(2000);
+                    if (currentPage >= 3) {
+                        break;
+                    }
 
-                System.out.println("省====>    " + area.getId() + " | " + area.getTitle());
+                    HtmlPage page = webClient.getPage(url);
 
-                if (area.isZhiXia()) {
-                    // 如果是直辖市 , 则直接读取
-                    System.out.println("市====>    " + area.getId() + " | " + area.getTitle());
+                    String cookie = getCookieString(webClient);
 
-                    int maxPage = 0;
-                    int currentPage = 1;
+                    System.out.println(cookie);
 
-                    do {
-                        HtmlPage page = webClient.getPage(url);
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 
-                        String cookie = getCookieString(webClient);
+                    Calendar calendar = Calendar.getInstance();
 
-                        System.out.println(cookie);
+                    String nowDate = sdf.format(calendar.getTime());
 
-                        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+                    calendar.add(Calendar.MONTH, -3);
 
-                        Calendar calendar = Calendar.getInstance();
+                    String startDate = sdf.format(calendar.getTime());
 
-                        String nowDate = sdf.format(calendar.getTime());
-
-                        calendar.add(Calendar.MONTH, -3);
-
-                        String startDate = sdf.format(calendar.getTime());
+                    FormBody.Builder formBodyBuilder = new FormBody.Builder();
 
 
-                        FormBody body = new FormBody.Builder()
-                                .add("TIMEBEGIN_SHOW", startDate)
-                                .add("TIMEEND_SHOW", nowDate)
-                                .add("TIMEBEGIN", startDate)
-                                .add("TIMEEND", nowDate)
-                                .add("DEAL_TIME", "04")
-                                .add("DEAL_CLASSIFY", "01")
-                                .add("DEAL_STAGE", "0101")
-                                .add("DEAL_PROVINCE", area.getId())
-                                .add("DEAL_CITY", area.isZhiXia() ? "0" : "")
-                                .add("DEAL_PLATFORM", "0")
-                                .add("DEAL_TRADE", "0")
-                                .add("isShowAll", "1")
-                                .add("PAGENUMBER", currentPage + "")
-                                .add("FINDTXT", "")
-                                .build();
+                    formBodyBuilder
+                            .add("TIMEBEGIN_SHOW", startDate)
+                            .add("TIMEEND_SHOW", nowDate)
+                            .add("TIMEBEGIN", startDate)
+                            .add("TIMEEND", nowDate)
+                            .add("DEAL_TIME", "04")
+                            .add("DEAL_CLASSIFY", "01")
+                            .add("DEAL_STAGE", "0101")
+                            .add("DEAL_PLATFORM", "0")
+                            .add("DEAL_TRADE", "0")
+                            .add("isShowAll", "1")
+                            .add("PAGENUMBER", currentPage + "")
+                            .add("FINDTXT", "");
+
+                    if (prov.isZhiXia()) {
+                        formBodyBuilder.add("DEAL_PROVINCE", prov.getId())
+                                .add("DEAL_CITY", "0");
+                    } else {
+                        formBodyBuilder.add("DEAL_PROVINCE", prov.getId())
+                                .add("DEAL_CITY", area.getId());
+                    }
 
 
-                        okhttp3.Request request = new Request.Builder()
-                                .headers(HttpUtils.getCommonHeaders())
-                                .url(url)
-                                .post(body)
-                                .header("Cookie", getCookieString(webClient))
-                                .build();
-
-                        HttpUtils.ResponseWrap responseWrap = HttpUtils.retryHttpNoProxy(request);
-
-                        if (responseWrap.isSuccess()) {
+                    FormBody body = formBodyBuilder.build();
 
 
-                            System.out.println("============== page = " + currentPage + "==============");
+                    okhttp3.Request request = new Request.Builder()
+                            .headers(HttpUtils.getCommonHeaders())
+                            .url(url)
+                            .post(body)
+                            .header("Cookie", getCookieString(webClient))
+                            .build();
 
-                            String responseBody = responseWrap.body;
+                    HttpUtils.ResponseWrap responseWrap = HttpUtils.retryHttpNoProxy(request);
 
-                            Document doc = Jsoup.parse(responseBody);
-
-                            String pageSizeStr = doc.select(".span_right").text().trim();
-
-                            pageSizeStr = pageSizeStr.split("/")[1].trim();
-
-                            maxPage = Integer.parseInt(pageSizeStr);
-
-                            Elements tenderElements = doc.select(".publicont");
+                    if (responseWrap.isSuccess()) {
 
 
-                            if (tenderElements.size() < 1) {
-                                System.out.println("内容为空~  maxPage = " + maxPage);
-                                break;
-                            }
+                        System.out.println("============== page = " + currentPage + "==============");
 
-                            for (Element tenderEl : tenderElements) {
-                                String title = tenderEl.select("a").attr("title");
+                        String responseBody = responseWrap.body;
 
-                                String detailUrl = tenderEl.select("a").attr("href");
+                        Document doc = Jsoup.parse(responseBody);
 
-                                System.out.println(title + " , " + detailUrl);
+                        String pageSizeStr = doc.select(".span_right").text().trim();
 
-                                //       getDetail(detailUrl, webClient);
+                        pageSizeStr = pageSizeStr.split("/")[1].trim();
 
-                                // todo 发现内容已存在，则不读取。 读取到1个月之外的则不读取
+                        maxPage = Integer.parseInt(pageSizeStr);
 
-                            }
+                        Elements tenderElements = doc.select(".publicont");
 
+                        if (tenderElements.size() < 1) {
+                            System.out.println("内容为空~  maxPage = " + maxPage);
+                            break;
+                        }
+
+                        for (Element tenderEl : tenderElements) {
+                            String title = tenderEl.select("a").attr("title");
+
+                            String detailUrl = tenderEl.select("a").attr("href");
+
+                            System.out.println(title + " , " + detailUrl);
+
+                            //       getDetail(detailUrl, webClient);
+
+                            // todo 发现内容已存在，则不读取。 读取到1个月之外的则不读取
 
                         }
 
-                        currentPage++;
-                    } while (currentPage <= maxPage);
 
-                    System.out.println();
-                    System.out.println();
+                    }
 
-                }
+                    currentPage++;
+                } while (currentPage <= maxPage);
 
             } catch (Exception ex) {
                 ex.printStackTrace();
-            } finally {
-                webClient.close();
             }
+
         }
+
+        webClient.close();
     }
 
 
