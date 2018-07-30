@@ -128,9 +128,7 @@ public class QuanGuoGGZYService {
         // 循环所有省
         for (Area area : areaList) {
 //            webClient.waitForBackgroundJavaScript(2000);
-
             getList(area);
-
         }
 
     }
@@ -141,6 +139,9 @@ public class QuanGuoGGZYService {
      */
     private void getList(Area prov) {
 
+        // 读取数据的起步时间，默认是1个月前
+        Calendar startReadTimeCalendar = Calendar.getInstance() ;
+        startReadTimeCalendar.add(Calendar.DAY_OF_YEAR,-32);
 
         WebClient webClient = new WebClient(BrowserVersion.CHROME);
         webClient.getOptions().setJavaScriptEnabled(true);
@@ -260,7 +261,8 @@ public class QuanGuoGGZYService {
 
                         Elements tenderElements = doc.select(".publicont");
 
-                        if (tenderElements.size() < 1) {
+                        // 如果没有数据则退出
+                        if (tenderElements.size() < 1 && currentPage == 1) {
                             System.out.println("内容为空~  maxPage = " + maxPage);
                             break;
                         }
@@ -269,6 +271,15 @@ public class QuanGuoGGZYService {
                             String title = tenderEl.select("a").attr("title");
 
                             String detailUrl = tenderEl.select("a").attr("href");
+
+                            String time = tenderEl.select("span_o").get(0).ownText().trim();
+
+                            Date timeDate = new SimpleDateFormat("yyyy-MM-dd").parse(time);
+
+                            // 如果发布时间大于 开始读取时间则读取
+                            if(timeDate.getTime() < ){
+
+                            }
 
                             System.out.println(title + " , " + detailUrl);
 
