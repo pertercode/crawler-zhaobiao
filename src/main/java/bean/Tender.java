@@ -18,7 +18,7 @@ public class Tender {
     private String title ;
 
     // 招标内容
-    private String content ;
+    private String content = "";
 
     // 爬虫来源
     private String crawlerFrom ;

@@ -1,12 +1,15 @@
 package services;
 
 import bean.Area;
+import bean.Tender;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.gargoylesoftware.htmlunit.BrowserVersion;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
 import com.gargoylesoftware.htmlunit.util.Cookie;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import http.HttpUtils;
 import okhttp3.FormBody;
 import okhttp3.Request;
@@ -15,6 +18,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -96,6 +100,9 @@ public class QuanGuoGGZYService {
 
     // 获取 WebClient 的Cookie
     private String getCookieString(WebClient webClient) {
+
+//        webClient.waitForBackgroundJavaScript(1000);
+
         Iterator<Cookie> cookieIterator = webClient.getCookieManager().getCookies().iterator();
 
         Map<String, String> cookiesMaps = new HashMap<>();
@@ -137,11 +144,12 @@ public class QuanGuoGGZYService {
     /**
      * 获得列表
      */
-    private void getList(Area prov) {
+    public void getList(Area prov) {
+        // TODO 查询数据库中，该平台下的，当前省市最新的一条记录,然后用作新旧判断
 
         // 读取数据的起步时间，默认是1个月前
-        Calendar startReadTimeCalendar = Calendar.getInstance() ;
-        startReadTimeCalendar.add(Calendar.DAY_OF_YEAR,-32);
+        Calendar startReadTimeCalendar = Calendar.getInstance();
+        startReadTimeCalendar.add(Calendar.DAY_OF_YEAR, -32);
 
         WebClient webClient = new WebClient(BrowserVersion.CHROME);
         webClient.getOptions().setJavaScriptEnabled(true);
@@ -164,11 +172,11 @@ public class QuanGuoGGZYService {
             areas.addAll(prov.getChildAreas());
         }
 
+
         // 遍历所有城市
         for (int i = 0; i < areas.size(); i++) {
 
             Area area = areas.get(i);
-
 
             System.out.println("省====>    " + prov.getId() + " | " + prov.getTitle());
 
@@ -177,24 +185,19 @@ public class QuanGuoGGZYService {
                 System.out.println("市====>    " + prov.getId() + " | " + prov.getTitle());
             } else {
                 System.out.println("市====>    " + area.getId() + " | " + area.getTitle());
-
             }
 
             int maxPage = 0;
             int currentPage = 1;
 
-            try {
-                do {
-
-                    if (currentPage >= 3) {
-                        break;
-                    }
-
+            loopPage:
+            do {
+                try {
                     HtmlPage page = webClient.getPage(url);
 
                     String cookie = getCookieString(webClient);
 
-                    System.out.println(cookie);
+                    System.out.println("cookie : " + cookie);
 
                     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -207,7 +210,6 @@ public class QuanGuoGGZYService {
                     String startDate = sdf.format(calendar.getTime());
 
                     FormBody.Builder formBodyBuilder = new FormBody.Builder();
-
 
                     formBodyBuilder
                             .add("TIMEBEGIN_SHOW", startDate)
@@ -231,9 +233,7 @@ public class QuanGuoGGZYService {
                                 .add("DEAL_CITY", area.getId());
                     }
 
-
                     FormBody body = formBodyBuilder.build();
-
 
                     okhttp3.Request request = new Request.Builder()
                             .headers(HttpUtils.getCommonHeaders())
@@ -255,6 +255,14 @@ public class QuanGuoGGZYService {
 
                         String pageSizeStr = doc.select(".span_right").text().trim();
 
+                        if (pageSizeStr.split("/").length < 2) {
+                            System.out.println(pageSizeStr);
+
+                            System.out.println(responseBody);
+
+                            System.exit(0);
+                        }
+
                         pageSizeStr = pageSizeStr.split("/")[1].trim();
 
                         maxPage = Integer.parseInt(pageSizeStr);
@@ -272,36 +280,130 @@ public class QuanGuoGGZYService {
 
                             String detailUrl = tenderEl.select("a").attr("href");
 
-                            String time = tenderEl.select("span_o").get(0).ownText().trim();
+                            String time = tenderEl.select(".span_o").get(0).ownText().trim();
 
                             Date timeDate = new SimpleDateFormat("yyyy-MM-dd").parse(time);
 
-                            // 如果发布时间大于 开始读取时间则读取
-                            if(timeDate.getTime() < ){
+                            String yeWuLeiXing = tenderEl.select(".p_tw .span_on").get(2).ownText().trim();
 
+                            String xinXiLeiXing = tenderEl.select(".p_tw .span_on").get(3).ownText().trim();
+
+                            String hangYe = tenderEl.select(".p_tw .span_on").get(4).ownText().trim();
+
+
+                            // todo 如果读取到数据库中最新的，根据来源URL判断,如果发现则 break 掉 (break loopPage;)
+
+//                            if(detailUrl == url){}
+
+                            // 如果发布时间大于 开始读取时间则读取
+                            if (timeDate.getTime() < startReadTimeCalendar.getTimeInMillis()) {
+                                break loopPage;
                             }
 
-                            System.out.println(title + " , " + detailUrl);
+                            Tender tender = new Tender();
+                            getDetail(detailUrl, tender);
 
-                            //       getDetail(detailUrl, webClient);
 
-                            // todo 发现内容已存在，则不读取。 读取到1个月之外的则不读取
+                            // 如果有内容才插入
+                            if (tender.getContent().length() > 5) {
+
+                                if (prov.isZhiXia()) {
+                                    // 直辖市
+                                    tender.setAreaId(prov.getId());
+                                    tender.setAreaTitle(prov.getTitle());
+                                    tender.setParentAreaId("");
+                                    tender.setParentAreaTitle("");
+                                } else {
+                                    tender.setAreaId(area.getId());
+                                    tender.setAreaTitle(area.getTitle());
+                                    tender.setParentAreaId(prov.getId());
+                                    tender.setParentAreaTitle(prov.getTitle());
+                                }
+
+                                tender.setTitle(title);
+                                tender.setYeWuType(yeWuLeiXing);
+                                tender.setInfoType(xinXiLeiXing);
+                                tender.setHangYe(hangYe);
+                                tender.setSendTime(time);
+
+                                System.out.println("【" + time + "】 " + title + " , " + detailUrl);
+
+                            } else {
+                                System.out.println("【内容为空】 ： " + tender.getCrawlerFrom());
+                            }
+
 
                         }
-
 
                     }
 
                     currentPage++;
-                } while (currentPage <= maxPage);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            } while (currentPage <= maxPage);
 
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
 
         }
 
         webClient.close();
+    }
+
+
+    private void getDetail(String url, Tender tender) {
+
+        WebClient webClient = new WebClient(BrowserVersion.CHROME);
+        webClient.getOptions().setJavaScriptEnabled(true);
+        webClient.getOptions().setCssEnabled(false);
+        webClient.getOptions().setThrowExceptionOnScriptError(false);
+        webClient.getOptions().setThrowExceptionOnFailingStatusCode(false);
+        webClient.getOptions().setUseInsecureSSL(true);
+        webClient.getOptions().setDownloadImages(false);
+
+        url = url.replace("html/a", "html/b");
+
+        try {
+            webClient.getPage(url);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        okhttp3.Request request = new Request.Builder()
+                .headers(HttpUtils.getCommonHeaders())
+                .url(url)
+                .header("Cookie", getCookieString(webClient))
+                .build();
+
+        HttpUtils.ResponseWrap responseWrap = HttpUtils.retryHttpNoProxy(request);
+
+        if (responseWrap.isSuccess()) {
+            String body = responseWrap.body;
+
+            String content = "";
+
+            Document doc = Jsoup.parse(body);
+            Element element = doc.getElementById("mycontent");
+
+            if (element != null) {
+                content = element.html().trim();
+            }
+
+            tender.setContent(content);
+
+            tender.setCrawlerFrom(url);
+            tender.setCrawlerFromName("全国公共资源交易平台");
+
+            String realFrom = doc.getElementById("platformName").ownText().trim();
+
+            String realFromUrl = doc.select(".detail_url a").attr("href").trim();
+
+            tender.setRealFrom(realFromUrl);
+            tender.setRealFromName(realFrom);
+
+        }
+
+        webClient.close();
+
     }
 
 
